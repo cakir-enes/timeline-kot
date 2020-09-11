@@ -10,11 +10,12 @@ plugins {
 group = "com.example"
 version = "0.0.1-SNAPSHOT"
 java.sourceCompatibility = JavaVersion.VERSION_11
-var scylla_driver_version = "4.8.0-scylla-0"
+var scylla_driver_version = "4.9.0-scylla-0"
 
 repositories {
 	mavenCentral()
 }
+
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
@@ -25,9 +26,9 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-	implementation("com.scylladb:java-driver-core:${scylla_driver_version}")
-	implementation("com.scylladb:java-driver-query-builder:${scylla_driver_version}")
-
+	implementation("com.scylladb:scylla-driver-core:3.10.1-scylla-0")
+//	implementation("com.scylladb:java-driver-core:${scylla_driver_version}")
+//	implementation("com.scylladb:java-driver-query-builder:${scylla_driver_version}")
 	testImplementation("org.springframework.boot:spring-boot-starter-test") {
 		exclude(group = "org.junit.vintage", module = "junit-vintage-engine")
 	}
