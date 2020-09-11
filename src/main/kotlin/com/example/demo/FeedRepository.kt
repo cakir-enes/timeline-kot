@@ -9,11 +9,9 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toSet
-import org.springframework.stereotype.Component
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.*
-import kotlin.time.Duration
-import kotlin.time.minutes
 
 private enum class Statement {
     FEED_BEFORE,
@@ -62,12 +60,12 @@ fun main() = runBlocking {
     val cluster = Cluster.builder().addContactPoint("localhost").withoutJMXReporting().build()
     val repo = Repository(cluster.connect("testkeyspace"))
     val serv = FeedService(repo)
-    println(serv.getFeedOfUser(10))
+//    println(serv.getFeedOfUser(10))
 //    println(repo.getFeedItems(10, Instant.now(), 20))
 
 }
 
-
+@org.springframework.stereotype.Repository
 class Repository(private val session: Session) {
 
     private val statements: Map<Statement, PreparedStatement> = mapOf(
@@ -82,8 +80,9 @@ class Repository(private val session: Session) {
             Statement.PENDING to prepareStatement("SELECT userid FROM pending_requests_by_user WHERE requesterid = :r AND userid IN :ids"),
             Statement.FOLLOWS to prepareStatement("SELECT userid FROM available_followers_by_user WHERE userid = :u AND followerid = :f")
     )
-
+    private val logger = LoggerFactory.getLogger(this.javaClass)
     suspend fun getAuthorProfile(authorId: Long): User? {
+//        println("Requested user $authorId")
         val row = execute(Statement.AUTHOR) { it.setLong("u", authorId) }.one() ?: return null
         return Mappers.toAuthorProfile(row)
     }

@@ -7,17 +7,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.supervisorScope
+import org.springframework.stereotype.Service
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.*
 import kotlin.Comparator
 
+@Service
 class FeedService(private val repo: Repository) {
 
     private val dateFormatter = ThreadLocal.withInitial { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone( ZoneId.systemDefault() ) }
 
-    suspend fun getFeedOfUser(userId: Long): List<FeedPost> = supervisorScope {
+    suspend fun getFeedOfUser(userId: Long, limit: Int, before: Instant): List<FeedPost> = supervisorScope {
 
         val userF = async(Dispatchers.IO) { repo.getUserProfile(userId) ?: throw RuntimeException("User NOT FOUND") }
         val feedItemsF = async(Dispatchers.IO) { repo.getFeedItems(userId, Instant.now(), 20) }
@@ -38,13 +40,13 @@ class FeedService(private val repo: Repository) {
         val postIds = filteredItems.map { it.id }
         val posts = getPosts(postIds)
         val postRels = repo.getPostRelations(userId, postIds)
-        val authorIds = filteredItems.fold(mutableListOf<Long>()) { ids, info ->
+        val authorIds = filteredItems.fold(mutableSetOf<Long>()) { ids, info ->
             ids.add(info.authorId)
             if (info.origAuthorId != null && info.origAuthorId != 0L) {
                 ids.add(info.origAuthorId)
             }
             ids
-        }
+        }.toList()
         val authorsF = async(Dispatchers.IO) { getAuthorProfiles(authorIds) }
 
         val userRelsF = async(Dispatchers.IO) { repo.getUserRelations(userId, authorIds) }
