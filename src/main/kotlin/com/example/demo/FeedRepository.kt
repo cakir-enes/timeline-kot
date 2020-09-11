@@ -9,8 +9,11 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toSet
+import org.springframework.stereotype.Component
 import java.time.Instant
 import java.util.*
+import kotlin.time.Duration
+import kotlin.time.minutes
 
 private enum class Statement {
     FEED_BEFORE,
@@ -58,30 +61,12 @@ fun main() = runBlocking {
 //            .build()
     val cluster = Cluster.builder().addContactPoint("localhost").withoutJMXReporting().build()
     val repo = Repository(cluster.connect("testkeyspace"))
-
+    val serv = FeedService(repo)
+    println(serv.getFeedOfUser(10))
+//    println(repo.getFeedItems(10, Instant.now(), 20))
 
 }
-//fun main() = runBlocking {
-////    val otherUserIds = setOf<Long>(1, 2, 3, 4, 5, 6)
-////
-////    val t = measureTimeMillis {
-//////        val x = withFlow(otherUserIds).toSet()
-////        val x = async { withMap(otherUserIds) }
-////        val xx = async { withMap(otherUserIds) }
-//////        val x = properFlow(otherUserIds)
-////        xx.await()
-////        println(x.await().size)
-////    }
-////
-////    println("Elapsed: ${t}")
-//
-//    val sess = CqlSessionBuilder()
-//            .addContactPoint(InetSocketAddress("localhost", 9042))
-//            .withKeyspace("testkeyspace")
-//            .build()
-//    val repo = Repository(sess)
-////    println(repo.getAuthorProfile(2))
-//}
+
 
 class Repository(private val session: Session) {
 
@@ -119,7 +104,8 @@ class Repository(private val session: Session) {
             it.setInt("l", limit)
             it.setTimestamp("before", Date.from(before))
         }
-        return rows.all().map(Mappers::toPostInfoFromFeedPost)
+        val l = rows.map(Mappers::toPostInfoFromFeedPost)
+        return l
     }
 
     suspend fun getTopCategoryPosts(categoryId: Int, before: Instant, limit: Int): List<PostInfo> {
@@ -134,7 +120,7 @@ class Repository(private val session: Session) {
     suspend fun getPostRelation(userId: Long, postIds: List<Long>): List<PostRelation> {
         val rows = execute(Statement.RELATIONS) {
             it.setLong("u", userId)
-            it.setList("p", postIds, Long::class.java)
+            it.setList("p", postIds, Long::class.javaObjectType)
         }
         return rows.map(Mappers::toPostRelation)
     }
@@ -142,30 +128,30 @@ class Repository(private val session: Session) {
     suspend fun getPostRelations(userId: Long, postIds: List<Long>): Map<Long, PostRelation> {
         val rows = execute(Statement.RELATIONS) {
             it.setLong("u", userId)
-            it.setList("p", postIds, Long::class.java)
+            it.setList("p", postIds, Long::class.javaObjectType)
         }
         return rows.all().map { it.getLong("postid") to Mappers.toPostRelation(it) }.toMap()
     }
 
     suspend fun getUserRelations(userId: Long, otherUserIds: List<Long>): Map<Long, UserRelation> = coroutineScope {
-        val followers = async {
+        val followers = async(Dispatchers.IO) {
             execute(Statement.FOLLOWERS) {
                 it.setLong("u", userId)
-                it.setList("a", otherUserIds, Long::class.java)
+                it.setList("a", otherUserIds, Long::class.javaObjectType)
             }.all().map { it.getLong("followerid") }.toSet()
         }
 
-        val authorsUserFollow = async {
+        val authorsUserFollow = async(Dispatchers.IO) {
             otherUserIds
-                    .map { async { isFollowing(userId, it) } }
+                    .map { async(Dispatchers.IO) { isFollowing(userId, it) } }
                     .mapNotNull { it.await() }
                     .toSet()
         }
 
-        val pendingRequests = async {
+        val pendingRequests = async(Dispatchers.IO) {
             execute(Statement.PENDING) {
                 it.setLong("r", userId)
-                it.setList("ids", otherUserIds, Long::class.java)
+                it.setList("ids", otherUserIds, Long::class.javaObjectType)
             }.all().map { it.getLong("userid") }.toSet()
         }
 
