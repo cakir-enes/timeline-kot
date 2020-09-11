@@ -3,7 +3,9 @@ package com.example.demo
 //import com.datastax.oss.driver.api.core.CqlSession
 //import com.datastax.oss.driver.api.core.CqlSessionBuilder
 //import com.datastax.oss.driver.api.core.cql.*
-import com.datastax.driver.core.*
+
+import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.cql.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flatMapMerge
@@ -11,7 +13,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toSet
 import org.slf4j.LoggerFactory
 import java.time.Instant
-import java.util.*
 
 private enum class Statement {
     FEED_BEFORE,
@@ -57,16 +58,16 @@ fun main() = runBlocking {
 //            .addContactPoint(InetSocketAddress("localhost", 9042))
 //            .withKeyspace("testkeyspace")
 //            .build()
-    val cluster = Cluster.builder().addContactPoint("localhost").withoutJMXReporting().build()
-    val repo = Repository(cluster.connect("testkeyspace"))
-    val serv = FeedService(repo)
+//    val cluster = Cluster.builder().addContactPoint("localhost").withoutJMXReporting().build()
+//    val repo = Repository(cluster.connect("testkeyspace"))
+//    val serv = FeedService(repo)
 //    println(serv.getFeedOfUser(10))
 //    println(repo.getFeedItems(10, Instant.now(), 20))
 
 }
 
 @org.springframework.stereotype.Repository
-class Repository(private val session: Session) {
+class Repository(private val session: CqlSession) {
 
     private val statements: Map<Statement, PreparedStatement> = mapOf(
             Statement.FEED_BEFORE to prepareStatement("SELECT postid, authorid, postedat, origauthorid FROM feed_by_user WHERE userid = :u LIMIT :l"),
@@ -101,19 +102,19 @@ class Repository(private val session: Session) {
         val rows = execute(Statement.FEED_BEFORE) {
             it.setLong("u", userId)
             it.setInt("l", limit)
-            it.setTimestamp("before", Date.from(before))
+            it.setInstant("before", before)
         }
-        val l = rows.map(Mappers::toPostInfoFromFeedPost)
-        return l
+        val l = rows.map{ Mappers.toPostInfoFromFeedPost(it)}
+        return l.all()
     }
 
     suspend fun getTopCategoryPosts(categoryId: Int, before: Instant, limit: Int): List<PostInfo> {
         val rows = execute(Statement.CATEGORY_BEFORE) {
             it.setInt("c", categoryId)
             it.setInt("l", limit)
-            it.setTimestamp("before", Date.from(before))
+            it.setInstant("before", before)
         }
-        return rows.map(Mappers::toPostInfoFromCategoryPost)
+        return rows.map(Mappers::toPostInfoFromCategoryPost).all()
     }
 
     suspend fun getPostRelation(userId: Long, postIds: List<Long>): List<PostRelation> {
@@ -121,7 +122,7 @@ class Repository(private val session: Session) {
             it.setLong("u", userId)
             it.setList("p", postIds, Long::class.javaObjectType)
         }
-        return rows.map(Mappers::toPostRelation)
+        return rows.map(Mappers::toPostRelation).all()
     }
 
     suspend fun getPostRelations(userId: Long, postIds: List<Long>): Map<Long, PostRelation> {
@@ -129,7 +130,7 @@ class Repository(private val session: Session) {
             it.setLong("u", userId)
             it.setList("p", postIds, Long::class.javaObjectType)
         }
-        return rows.all().map { it.getLong("postid") to Mappers.toPostRelation(it) }.toMap()
+        return rows.map { it.getLong("postid") to Mappers.toPostRelation(it) }.all().toMap()
     }
 
     suspend fun getUserRelations(userId: Long, otherUserIds: List<Long>): Map<Long, UserRelation> = coroutineScope {
@@ -169,17 +170,16 @@ class Repository(private val session: Session) {
 //    }
 
 
-    private suspend fun execute(query: Statement, binder: (BoundStatement) -> Unit): ResultSet {
-        val s = statements[query]!!.bind()
+    private suspend fun execute(query: Statement, binder: (BoundStatementBuilder) -> Unit): ResultSet {
+        val s = statements[query]!!.boundStatementBuilder()
         binder(s)
-        return session.execute(s)
+        return session.execute(s.build())
     }
 
 //    private fun execute(query: BoundStatement): ResultSet = session.execute(query)
 
     private fun prepareStatement(query: String) =
-            this.session.prepare(query).setIdempotent(true)
-//            this.session.prepare(SimpleStatement(query).setIdempotent(true))
+            this.session.prepare(query)
 
 
     private object Mappers {
@@ -189,7 +189,7 @@ class Repository(private val session: Session) {
                 authorId = row.getLong("authorid"),
                 categoryId = null,
                 origAuthorId = row.getLong("origauthorid"),
-                postedAt = row.getTimestamp("postedAt").toInstant()
+                postedAt = row.getInstant("postedAt")!!
         )
 
         fun toPostInfoFromCategoryPost(row: Row) = PostInfo(
@@ -197,14 +197,14 @@ class Repository(private val session: Session) {
                 authorId = row.getLong("authorid"),
                 categoryId = null, //row.getInt("categoryid"),
                 origAuthorId = row.getLong("origauthorid"),
-                postedAt = row.getTimestamp("createdAt").toInstant()
+                postedAt = row.getInstant("createdAt")!!
         )
 
         fun toPost(row: Row) = Post(
                 userId = row.getLong("userid"),
-                createdAt = row.getTimestamp("createdAt").toInstant(),
+                createdAt = row.getInstant("createdAt")!!,
                 postId = row.getLong("postid"),
-                content = row.getString("content"),
+                content = row.getString("content")!!,
                 categoryId = row.getInt("categoryid"),
                 mentions = row.getString("mentions"),
                 repostId = row.getLong("repostid"),
@@ -215,12 +215,12 @@ class Repository(private val session: Session) {
                 repostCount = row.getInt("repostcount"),
                 replyCount = row.getInt("replycount"),
                 mainPostId = row.getLong("mainpostid"),
-                isCanReply = row.getBool("canreply"),
+                isCanReply = row.getBoolean("canreply"),
                 replies = row.getString("replies"),
                 viewCount = row.getLong("viewcount"),
                 postDetailsViewCount = row.getLong("postdetailsviewcount"),
                 postToProfileCount = row.getLong("posttoprofilecount"),
-                fileEntries = row.getList("fileentries", String::class.java),
+                fileEntries = row.getList("fileentries", String::class.java) ?: listOf(),
                 postLink = row.getString("postlink")
         )
 
@@ -228,10 +228,10 @@ class Repository(private val session: Session) {
         fun toPostRelation(row: Row) = PostRelation(
                 userId = row.getLong("userid"),
                 postId = row.getLong("postid"),
-                reported = row.getBool("isReported"),
-                liked = row.getBool("isliked"),
-                disliked = row.getBool("isdisliked"),
-                reposted = row.getBool("isreposted")
+                reported = row.getBoolean("isReported"),
+                liked = row.getBoolean("isliked"),
+                disliked = row.getBoolean("isdisliked"),
+                reposted = row.getBoolean("isreposted")
         )
 
 

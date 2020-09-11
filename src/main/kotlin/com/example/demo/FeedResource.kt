@@ -19,11 +19,8 @@ class FeedResource(private val feedService: FeedService) {
             @PathVariable count: Int,
             @RequestParam(value = "beforeDate", required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") beforeDate: Instant?): List<FeedPost?>? = coroutineScope {
         log.debug("REST request to delete Feed : {}", id)
-        try {
-             feedService.getFeedOfUser(id, count, beforeDate ?: Instant.now())
-        } catch (e: Exception) {
-            log.error("Feed service error: ", e)
-        }
-         emptyList<FeedPost>()
+        val s = feedService.getFeedOfUser(id, count, beforeDate ?: Instant.now())
+        return@coroutineScope s
+
     }
 }

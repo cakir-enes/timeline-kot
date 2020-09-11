@@ -26,7 +26,8 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-	implementation("com.scylladb:scylla-driver-core:3.10.1-scylla-0")
+	implementation("com.scylladb:java-driver-core:4.9.0-scylla-0")
+	implementation("com.datastax.oss:native-protocol:1.4.11")
 //	implementation("com.scylladb:java-driver-core:${scylla_driver_version}")
 //	implementation("com.scylladb:java-driver-query-builder:${scylla_driver_version}")
 	testImplementation("org.springframework.boot:spring-boot-starter-test") {

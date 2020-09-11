@@ -54,7 +54,7 @@ class FeedService(private val repo: Repository) {
         val authors = authorsF.await()
         val userRels = userRelsF.await()
 
-        filteredItems.mapNotNull {
+        val s = filteredItems.mapNotNull {
 
             val post = posts[it.id] ?: return@mapNotNull null
             val postRel = postRels[it.id] ?: PostRelation(it.authorId, it.id)
@@ -71,6 +71,7 @@ class FeedService(private val repo: Repository) {
                 FeedPost.createOriginalPost(post, FeedUser.from(author, authorRel), postRel, dateFormatter.get())
             }
         }
+        s
     }
 
     private suspend fun getAuthorProfiles(authorIds: List<Long>): Map<Long, User> = coroutineScope {
